@@ -1,105 +1,201 @@
+from dataloader import LoadData
 import time
 import torch
-from torch import nn
+from torch import nn, optim
+from torchvision import models
 from torch.utils.data import DataLoader
-from utils import LoadData
+import shutil
 
-from torchvision.models import alexnet  # 最简单的模型
-from torchvision.models import vgg11, vgg13, vgg16, vgg19  # VGG系列
-from torchvision.models import resnet18, resnet34, resnet50, resnet101, resnet152  # ResNet系列
-from torchvision.models import inception_v3  # Inception 系列
+from tensorboardX import SummaryWriter
 
 
-# 定义训练函数，需要
-def train(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset)
-    # 从数据加载器中读取batch（一次读取多少张，即批次数），X(图片数据)，y（图片真实标签）。
-    for batch, (X, y) in enumerate(dataloader):
-        # 将数据存到显卡
-        X, y = X.to(device), y.to(device)
-
-        # 得到预测的结果pred
-        pred = model(X)
-
-        # 计算预测的误差
-        # print(pred,y)
-        loss = loss_fn(pred, y)
-
-        # 反向传播，更新模型参数
-        optimizer.zero_grad()  # 梯度清零
-        loss.backward()  # 反向传播
-        optimizer.step()  # 更新参数
-
-        # 每训练10次，输出一次当前信息
-        if batch % 10 == 0:
-            loss, current = loss.item(), batch * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
-
-
-def test(dataloader, model):
-    size = len(dataloader.dataset)
-    # 将模型转为验证模式
-    model.eval()
-    # 初始化test_loss 和 correct， 用来统计每次的误差
-    test_loss, correct = 0, 0
-    # 测试时模型参数不用更新，所以no_gard()
-    # 非训练， 推理期用到
+def accuracy(output, target, topk=(1,)):
     with torch.no_grad():
-        # 加载数据加载器，得到里面的X（图片数据）和y(真实标签）
-        for X, y in dataloader:
-            # 将数据转到GPU
-            X, y = X.to(device), y.to(device)
-            # 将图片传入到模型当中就，得到预测的值pred
-            pred = model(X)
-            # 计算预测值pred和真实值y的差距
-            test_loss += loss_fn(pred, y).item()
-            # 统计预测正确的个数
-            correct += (pred.argmax(1) == y).type(torch.float).sum().item()  # 返回相应维度的最大值的索引
-    test_loss /= size
-    correct /= size
-    print(f"correct = {correct}, Test Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+        maxk = max(topk)
+        batch_size = target.size(0)
+
+        _, pred = output.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+        class_to = pred[0].cpu().numpy()
+
+        res = []
+        for k in topk:
+            correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / batch_size))
+        return res, class_to
+
+
+# 保存模型策略： 根据is_best，保存valid acc 最好的模型
+def save_checkpoint(state, is_best, filename='checkpoint_4.pth.tar'):
+    torch.save(state, filename)
+    if is_best:
+        shutil.copyfile(filename, 'model_best_' + filename)
+
+
+def train(train_dataloader, model, loss_fn, optimizer, epoch, writer):
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+
+    # switch to train mode
+    model.train()
+
+    end = time.time()
+    for i, (input, target) in enumerate(train_dataloader):
+        # measure data loading time
+        data_time.update(time.time() - end)
+
+        input = input.cuda()
+        target = target.cuda()
+
+        # compute output
+        output = model(input)
+        loss = loss_fn(output, target)
+
+        # measure accuracy and record loss
+        [prec1, prec5], class_to = accuracy(output, target, topk=(1, 5))
+        losses.update(loss.item(), input.size(0))
+        top1.update(prec1[0], input.size(0))
+        top5.update(prec5[0], input.size(0))
+
+        # compute gradient and do SGD step
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if i % 10 == 0:
+            print('Epoch: [{0}][{1}/{2}]\t'
+                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                epoch, i, len(train_dataloader), batch_time=batch_time,
+                data_time=data_time, loss=losses, top1=top1, top5=top5))
+    writer.add_scalar('loss/train_loss', losses.val, global_step=epoch)
+
+
+def validate(val_dataloader, model, loss_fn, epoch, writer, phase="VAL"):
+    batch_time = AverageMeter()
+    losses = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+
+    # switch to evaluate mode
+    model.eval()
+
+    with torch.no_grad():
+        end = time.time()
+        for i, (input, target) in enumerate(val_dataloader):
+            input = input.cuda()
+            target = target.cuda()
+            # compute output
+            output = model(input)
+            loss = loss_fn(output, target)
+
+            # measure accuracy and record loss
+            [prec1, prec5], class_to = accuracy(output, target, topk=(1, 5))
+            losses.update(loss.item(), input.size(0))
+            top1.update(prec1[0], input.size(0))
+            top5.update(prec5[0], input.size(0))
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            if i % 10 == 0:
+                print('Test-{0}: [{1}/{2}]\t'
+                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                      'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+                      'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                    phase, i, len(val_dataloader),
+                    batch_time=batch_time,
+                    loss=losses,
+                    top1=top1, top5=top5))
+
+        print(' * {} Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'
+              .format(phase, top1=top1, top5=top5))
+    writer.add_scalar('loss/valid_loss', losses.val, global_step=epoch)
+    return top1.avg, top5.avg
+
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
 
 
 if __name__ == '__main__':
-    batch_size = 8
+    batch_size = 32
+    epochs = 30
+    num_classes = 214
 
-    # # 给训练集和测试集分别创建一个数据集加载器
-    train_data = LoadData("train.text", True)
-    valid_data = LoadData("test.text", False)
-
+    # 给训练集和测试集分别创建一个数据集加载器
+    train_data = LoadData("train.txt", True)
+    valid_data = LoadData("val.txt", False)
     train_dataloader = DataLoader(dataset=train_data, num_workers=4, pin_memory=True, batch_size=batch_size,
                                   shuffle=True)
-    test_dataloader = DataLoader(dataset=valid_data, num_workers=4, pin_memory=True, batch_size=batch_size)
+    valid_dataloader = DataLoader(dataset=valid_data, num_workers=4, pin_memory=True, batch_size=batch_size)
+    train_data_size = len(train_data)
+    print('训练集数量：%d' % train_data_size)
+    valid_data_size = len(valid_data)
+    print('验证集数量：%d' % valid_data_size)
 
-    # 如果显卡可用，则用显卡进行训练
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    # device='cpu'
-    print(f"Using {device} device")
-
-    '''
-        随着模型的加深，需要训练的模型参数量增加，相同的训练次数下模型训练准确率起来得更慢
-    '''
-
-    model = resnet34(weights='DEFAULT', num_classes=1000).to(device)
-    print(model)
+    # 定义网络
+    model = models.resnet50(weights='DEFAULT')
+    fc_inputs = model.fc.in_features
+    model.fc = nn.Linear(fc_inputs, num_classes)
+    if torch.cuda.is_available():
+        model = model.cuda()
 
     # 定义损失函数，计算相差多少，交叉熵，
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.CrossEntropyLoss().cuda()
 
-    # 定义优化器，用来训练时候优化模型参数，随机梯度下降法
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)  # 初始学习率
+    # 定义优化器，用来训练时候优化模型参数，优化器选择 Adam，并采用 StepLR 进行学习率衰减。
+    lr_init = 0.0001  # 初始学习率
+    lr_stepsize = 5
+    weight_decay = 0.001
+    optimizer = optim.Adam(model.parameters(), lr=lr_init, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=lr_stepsize, gamma=0.1)
 
-    # 一共训练1次
-    epochs = 2
-    for t in range(epochs):
-        print(f"Epoch {t + 1}\n-------------------------------")
-        time_start = time.time()
-        train(train_dataloader, model, loss_fn, optimizer)
-        time_end = time.time()
-        print(f"train time: {(time_end - time_start)}")
-        test(test_dataloader, model)
-    print("Done!")
-
-    # 保存训练好的模型
-    torch.save(model.state_dict(), "2-2model_resnet34.pth")
-    print("Saved PyTorch Model Success!")
+    writer = SummaryWriter('runs/resnet50_4')
+    # 训练
+    best_prec1 = 0
+    for epoch in range(epochs):
+        train(train_dataloader, model, loss_fn, optimizer, epoch, writer)
+        # 在验证集上测试效果
+        valid_prec1, valid_prec5 = validate(valid_dataloader, model, loss_fn, epoch, writer, phase="VAL")
+        scheduler.step()
+        is_best = valid_prec1 > best_prec1
+        best_prec1 = max(valid_prec1, best_prec1)
+        save_checkpoint({
+            'epoch': epoch + 1,
+            'arch': 'resnet50',
+            'state_dict': model.state_dict(),
+            'best_prec1': best_prec1,
+            'optimizer': optimizer.state_dict(),
+        }, is_best,
+            filename='checkpoint_resnet50_4.pth.tar')
+    writer.close()
