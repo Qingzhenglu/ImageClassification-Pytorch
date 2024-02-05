@@ -5,9 +5,6 @@ from PIL import Image, ImageFile
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 # 防止由于一些图像损坏导致数据集无法加载的情况
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -46,7 +43,7 @@ class LoadData(Dataset):
 
     def padding_black(self, img):  # 如果尺寸太小可以扩充
         w, h = img.size
-        scale = 224. / max(w, h)
+        scale = 224. / max(w, h)    # 比例因子
         img_fg = img.resize([int(x) for x in [w * scale, h * scale]])
         size_fg = img_fg.size
         size_bg = 224

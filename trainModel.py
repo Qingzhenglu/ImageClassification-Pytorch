@@ -10,7 +10,10 @@ from tensorboardX import SummaryWriter
 
 
 def accuracy(output, target, topk=(1,)):
-    with torch.no_grad():
+    """
+        计算 准确率（模型正确预测的样本数与总样本数之比）
+    """
+    with torch.no_grad():   # 禁用梯度计算
         maxk = max(topk)
         batch_size = target.size(0)
 
@@ -27,8 +30,10 @@ def accuracy(output, target, topk=(1,)):
         return res, class_to
 
 
-# 保存模型策略： 根据is_best，保存valid acc 最好的模型
 def save_checkpoint(state, is_best, filename='checkpoint_4.pth.tar'):
+    """
+    保存模型策略： 根据is_best，保存valid acc 最好的模型
+    """
     torch.save(state, filename)
     if is_best:
         shutil.copyfile(filename, 'model_best_' + filename)
@@ -41,33 +46,33 @@ def train(train_dataloader, model, loss_fn, optimizer, epoch, writer):
     top1 = AverageMeter()
     top5 = AverageMeter()
 
-    # switch to train mode
+    # 训练模式
     model.train()
 
     end = time.time()
+    # input ： img , target : label
     for i, (input, target) in enumerate(train_dataloader):
-        # measure data loading time
+        # 计算数据加载时间
         data_time.update(time.time() - end)
 
         input = input.cuda()
         target = target.cuda()
 
-        # compute output
+        # 预测label , 计算loss
         output = model(input)
         loss = loss_fn(output, target)
 
-        # measure accuracy and record loss
+        # 计算准确率 and 记录loss
         [prec1, prec5], class_to = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1.update(prec1[0], input.size(0))
         top5.update(prec5[0], input.size(0))
 
-        # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
+        optimizer.zero_grad()   # 梯度清零
+        loss.backward()  # 计算损失函数的梯度
         optimizer.step()
 
-        # measure elapsed time
+        # 计算一个阶段经历的时间
         batch_time.update(time.time() - end)
         end = time.time()
 
@@ -89,7 +94,7 @@ def validate(val_dataloader, model, loss_fn, epoch, writer, phase="VAL"):
     top1 = AverageMeter()
     top5 = AverageMeter()
 
-    # switch to evaluate mode
+    # 评估模式
     model.eval()
 
     with torch.no_grad():
@@ -129,7 +134,9 @@ def validate(val_dataloader, model, loss_fn, epoch, writer, phase="VAL"):
 
 
 class AverageMeter(object):
-    """Computes and stores the average and current value"""
+    """
+        计算单个变量的算术平均值
+    """
 
     def __init__(self):
         self.reset()
@@ -167,6 +174,7 @@ if __name__ == '__main__':
     model = models.resnet50(weights='DEFAULT')
     fc_inputs = model.fc.in_features
     model.fc = nn.Linear(fc_inputs, num_classes)
+
     if torch.cuda.is_available():
         model = model.cuda()
 
