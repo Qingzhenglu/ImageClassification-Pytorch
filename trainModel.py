@@ -160,8 +160,8 @@ if __name__ == '__main__':
     num_classes = 214
 
     # 给训练集和测试集分别创建一个数据集加载器
-    train_data = LoadData("train.txt", True)
-    valid_data = LoadData("val.txt", False)
+    train_data = LoadData("dataSet/train.txt", True)
+    valid_data = LoadData("dataSet/val.txt", False)
     train_dataloader = DataLoader(dataset=train_data, num_workers=4, pin_memory=True, batch_size=batch_size,
                                   shuffle=True)
     valid_dataloader = DataLoader(dataset=valid_data, num_workers=4, pin_memory=True, batch_size=batch_size)

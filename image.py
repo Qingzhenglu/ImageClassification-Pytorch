@@ -34,14 +34,14 @@ random.shuffle(train_list)
 random.shuffle(val_list)
 random.shuffle(test_list)
 
-with open('train.txt', 'w', encoding='utf-8') as f:
+with open('dataSet/train.txt', 'w', encoding='utf-8') as f:
     for train_img in train_list:
         f.write(str(train_img))
 
-with open('val.txt', 'w', encoding='utf-8') as f:
+with open('dataSet/val.txt', 'w', encoding='utf-8') as f:
     for val_img in val_list:
         f.write(str(val_img))
 
-with open('test.txt', 'w', encoding='utf-8') as f:
+with open('dataSet/test.txt', 'w', encoding='utf-8') as f:
     for test_img in test_list:
         f.write(str(test_img))

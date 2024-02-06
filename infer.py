@@ -17,7 +17,7 @@ def softmax(x):
     return softmax_x
 
 
-with open('dir_label.txt', 'r', encoding='utf-8') as f:
+with open('dataSet/dir_label.txt', 'r', encoding='utf-8') as f:
     labels = f.readlines()
     labels = list(map(lambda x: x.strip().split('\t'), labels))
 

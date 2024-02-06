@@ -1,5 +1,4 @@
 import torch
-import torchvision
 from PIL import Image, ImageFile
 
 import torchvision.transforms as transforms
@@ -71,7 +70,7 @@ class LoadData(Dataset):
 
 
 if __name__ == "__main__":
-    train_dataset = LoadData("train.txt", True)
+    train_dataset = LoadData("dataSet/train.txt", True)
     print("数据个数：", len(train_dataset))
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
                                                batch_size=10,
