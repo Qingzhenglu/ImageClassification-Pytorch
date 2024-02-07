@@ -1,4 +1,5 @@
 from dataloader import LoadData
+
 import time
 import torch
 from torch import nn, optim
@@ -13,7 +14,7 @@ def accuracy(output, target, topk=(1,)):
     """
         计算 准确率（模型正确预测的样本数与总样本数之比）
     """
-    with torch.no_grad():   # 禁用梯度计算
+    with torch.no_grad():  # 禁用梯度计算
         maxk = max(topk)
         batch_size = target.size(0)
 
@@ -68,9 +69,9 @@ def train(train_dataloader, model, loss_fn, optimizer, epoch, writer):
         top1.update(prec1[0], input.size(0))
         top5.update(prec5[0], input.size(0))
 
-        optimizer.zero_grad()   # 梯度清零
-        loss.backward()  # 计算损失函数的梯度
-        optimizer.step()
+        optimizer.zero_grad()  # 梯度清零
+        loss.backward()  # 反向传播，计算当前梯度
+        optimizer.step()  # 根据梯度更新网络参数
 
         # 计算一个阶段经历的时间
         batch_time.update(time.time() - end)
@@ -102,17 +103,17 @@ def validate(val_dataloader, model, loss_fn, epoch, writer, phase="VAL"):
         for i, (input, target) in enumerate(val_dataloader):
             input = input.cuda()
             target = target.cuda()
-            # compute output
+            # 预测label , 计算loss
             output = model(input)
             loss = loss_fn(output, target)
 
-            # measure accuracy and record loss
+            # 计算准确率 and 记录loss
             [prec1, prec5], class_to = accuracy(output, target, topk=(1, 5))
             losses.update(loss.item(), input.size(0))
             top1.update(prec1[0], input.size(0))
             top5.update(prec5[0], input.size(0))
 
-            # measure elapsed time
+            # 计算一个阶段经历的时间
             batch_time.update(time.time() - end)
             end = time.time()
 

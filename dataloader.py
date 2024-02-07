@@ -38,6 +38,7 @@ class LoadData(Dataset):
         with open(txt_path, 'r', encoding='utf-8') as f:
             imgs_info = f.readlines()
             imgs_info = list(map(lambda x: x.strip().split('\t'), imgs_info))
+        # print(f"imgs_info:{0}", imgs_info)
         return imgs_info
 
     def padding_black(self, img):  # 如果尺寸太小可以扩充
