@@ -1,4 +1,4 @@
-# Pytorch
+# ImageClassification-Pytorch
 > try to train the model of Garbage classification...
 
 ## 项目简介
